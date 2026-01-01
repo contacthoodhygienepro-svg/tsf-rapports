@@ -7,11 +7,7 @@
   <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/2913/2913465.png" />
   <meta name="theme-color" content="#4285f4" />
   <script src="https://cdn.tailwindcss.com"></script>
-  <script src="https://unpkg.com/react@18/umd/react.production.min.js"></script>
-  <script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"></script>
-  <script src="https://unpkg.com/@babel/standalone/babel.min.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/html2pdf.js@0.10.1/dist/html2pdf.bundle.min.js"></script>
-  <script src="https://accounts.google.com/gsi/client" async defer></script>
 
   <style>
     @media print {
@@ -28,815 +24,334 @@
       ::placeholder { color: transparent; }
     }
     canvas { touch-action: none; }
-    
-    .google-btn {
-      background: white;
-      border: 1px solid #dadce0;
-      border-radius: 4px;
-      padding: 12px 24px;
-      font-size: 14px;
-      font-weight: 500;
-      color: #3c4043;
-      display: flex;
-      align-items: center;
-      gap: 12px;
-      cursor: pointer;
-      transition: all 0.2s;
-    }
-    .google-btn:hover {
-      box-shadow: 0 1px 3px rgba(0,0,0,0.12);
-    }
-    
-    .save-indicator {
-      position: fixed;
-      top: 70px;
-      right: 20px;
-      padding: 8px 16px;
-      border-radius: 20px;
-      font-size: 12px;
-      font-weight: 500;
-      z-index: 100;
-      transition: all 0.3s;
-    }
-    
-    .save-indicator.saving {
-      background: #fff3cd;
-      color: #856404;
-    }
-    
-    .save-indicator.saved {
-      background: #d4edda;
-      color: #155724;
-    }
-    
-    .save-indicator.error {
-      background: #f8d7da;
-      color: #721c24;
-    }
   </style>
 </head>
 
 <body class="bg-gray-100 text-gray-900">
-  <div id="root"></div>
+  <div id="root">
+    <div class="min-h-screen bg-gray-100 p-4 md:p-8 font-sans">
 
-  <script type="text/babel">
-    const { useState, useEffect, useRef } = React;
+      <!-- Action Bar -->
+      <div class="max-w-4xl mx-auto mb-6 flex flex-wrap gap-3 items-center justify-between no-print sticky top-0 z-40 bg-white/95 backdrop-blur p-3 shadow-lg rounded-lg">
+        <h1 class="text-lg font-bold text-gray-800">TSF Mobile</h1>
+        <div class="flex flex-wrap gap-2 text-sm">
+          <button onclick="saveDraft()" class="bg-orange-600 text-white px-4 py-2 rounded-lg shadow hover:bg-orange-700 font-medium">
+            💾 Sauvegarder
+          </button>
+          <button onclick="generatePDF()" class="bg-green-600 text-white px-4 py-2 rounded-lg shadow hover:bg-green-700 font-bold">
+            📥 Télécharger PDF
+          </button>
+        </div>
+      </div>
 
-    const MechanicalType = {
-      TAPETTE: 'TAPETTE',
-      PLAQUE_GLUE: 'PLAQUE_GLUE',
-      AUTRES: 'AUTRES'
-    };
+      <!-- MAIN REPORT -->
+      <div id="report" class="max-w-4xl mx-auto bg-white shadow-xl md:p-10 p-4 print:shadow-none print:p-0">
 
-    const INITIAL_REPORT = {
-      date: new Date().toISOString().split('T')[0],// Google Drive API Manager
-    const GoogleDriveManager = {
-      accessToken: null,
-      
-      isSignedIn() {
-        return !!this.accessToken;
-      },
-      
-      async signIn() {
-        return new Promise((resolve, reject) => {
-          const client = window.google.accounts.oauth2.initTokenClient({
-            client_id: 'VOTRE_CLIENT_ID_ICI.apps.googleusercontent.com',
-            scope: 'https://www.googleapis.com/auth/drive.file',
-            callback: (response) => {
-              if (response.access_token) {
-                this.accessToken = response.access_token;
-                resolve(true);
-              } else {
-                reject(new Error('Échec de connexion'));
-              }
-            },
-          });
-          client.requestAccessToken();
-        });
-      },
-      
-      async createFolder(name, parentId = null) {
-        const metadata = {
-          name,
-          mimeType: 'application/vnd.google-apps.folder',
-          ...(parentId && { parents: [parentId] })
-        };
-        
-        const response = await fetch('https://www.googleapis.com/drive/v3/files', {
-          method: 'POST',
-          headers: {
-            'Authorization': `Bearer ${this.accessToken}`,
-            'Content-Type': 'application/json'
-          },
-          body: JSON.stringify(metadata)
-        });
-        
-        return await response.json();
-      },
-      
-      async findFolder(name, parentId = null) {
-        let query = `name='${name}' and mimeType='application/vnd.google-apps.folder' and trashed=false`;
-        if (parentId) query += ` and '${parentId}' in parents`;
-        
-        const response = await fetch(`https://www.googleapis.com/drive/v3/files?q=${encodeURIComponent(query)}`, {
-          headers: { 'Authorization': `Bearer ${this.accessToken}` }
-        });
-        
-        const data = await response.json();
-        return data.files && data.files.length > 0 ? data.files[0] : null;
-      },
-      
-      async ensureFolderPath() {
-        const now = new Date();
-        const year = now.getFullYear().toString();
-        const month = now.toLocaleDateString('fr-FR', { month: 'long' });
-        const monthCapitalized = month.charAt(0).toUpperCase() + month.slice(1);
-        
-        let rootFolder = await this.findFolder('TSF Rapports');
-        if (!rootFolder) rootFolder = await this.createFolder('TSF Rapports');
-        
-        let yearFolder = await this.findFolder(year, rootFolder.id);
-        if (!yearFolder) yearFolder = await this.createFolder(year, rootFolder.id);
-        
-        let monthFolder = await this.findFolder(monthCapitalized, yearFolder.id);
-        if (!monthFolder) monthFolder = await this.createFolder(monthCapitalized, yearFolder.id);
-        
-        return monthFolder.id;
-      },
-      
-      async uploadFile(blob, filename, mimeType = 'application/pdf') {
-        const folderId = await this.ensureFolderPath();
-        
-        const metadata = { name: filename, mimeType, parents: [folderId] };
-        
-        const form = new FormData();
-        form.append('metadata', new Blob([JSON.stringify(metadata)], { type: 'application/json' }));
-        form.append('file', blob);
-        
-        const response = await fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart', {
-          method: 'POST',
-          headers: { 'Authorization': `Bearer ${this.accessToken}` },
-          body: form
-        });
-        
-        return await response.json();
-      },
-      
-      async saveDraft(data) {
-        const blob = new Blob([JSON.stringify(data)], { type: 'application/json' });
-        const filename = `Brouillon_${data.date}_${data.clientCoordinates || 'Sans-nom'}.json`;
-        return await this.uploadFile(blob, filename, 'application/json');
-      }
-    };
+        <header class="flex flex-col md:flex-row gap-6 border-b-2 border-black pb-4 mb-6">
+          <div class="w-full md:w-1/3 flex flex-col items-center justify-center text-center">
+            <div class="w-full h-auto border-2 border-black p-2 mb-2 flex items-center justify-center font-bold text-2xl tracking-widest text-gray-800">
+              TSF NORMANDIE
+            </div>
+            <p class="text-xs">Impasse des Primevères - ZA du Domaine Ducey</p>
+            <p class="text-xs font-bold">50220 DUCEY</p>
+            <p class="text-xs">Tel. 02 50 26 91 30</p>
+          </div>
+          <div class="w-full md:w-2/3 flex flex-col justify-between text-right">
+            <p class="text-xs italic text-gray-600 border-b border-gray-300 pb-1">Hygiène de l'air / Hygiène anti-parasitaire / Décapages</p>
+            <h1 class="text-2xl font-black uppercase mt-4 text-center md:text-right">Rapport d'Intervention - Dératisation</h1>
+          </div>
+        </header>
 
-    // Signature Pad Component
-    const SignaturePad = ({ label, onSave, onClear, initialData }) => {
-      const canvasRef = useRef(null);
-      const [isDrawing, setIsDrawing] = useState(false);
-      const [isEmpty, setIsEmpty] = useState(!initialData);
+        <!-- General Info -->
+        <section class="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 mb-6">
+          <div class="space-y-3">
+            <div class="flex flex-col">
+              <label class="font-bold text-sm mb-1">Date Intervention:</label>
+              <input type="date" id="date" class="border border-gray-400 px-3 py-2 rounded" />
+            </div>
+            <div class="flex flex-col">
+              <label class="font-bold text-sm mb-1">Nom applicateur:</label>
+              <input type="text" id="applicatorName" class="border border-gray-400 px-3 py-2 rounded" />
+            </div>
+            <div class="flex flex-col">
+              <label class="font-bold text-sm mb-1">Passage suivant:</label>
+              <input type="text" id="nextVisit" placeholder="Date prévisionnelle" class="border border-gray-400 px-3 py-2 rounded" />
+            </div>
+          </div>
 
-      useEffect(() => {
-        if (initialData && canvasRef.current) {
-          const ctx = canvasRef.current.getContext('2d');
-          const img = new Image();
-          img.onload = () => { ctx.drawImage(img, 0, 0); setIsEmpty(false); };
-          img.src = initialData;
-        }
-      }, [initialData]);
+          <div class="space-y-3">
+            <div class="flex flex-col">
+              <label class="font-bold text-sm mb-1">Heure Intervention:</label>
+              <input type="time" id="time" class="border border-gray-400 px-3 py-2 rounded" />
+            </div>
+            <div class="flex flex-col">
+              <label class="font-bold text-sm mb-1">Client (Nom complet):</label>
+              <input type="text" id="client" class="border border-gray-400 px-3 py-2 rounded text-base" placeholder="Ex: Boulangerie Martin, 14 rue..." />
+            </div>
+            <div class="flex flex-col">
+              <label class="font-bold text-sm mb-1">Lieux traités:</label>
+              <textarea rows="2" id="locations" class="border border-gray-400 px-3 py-2 rounded" placeholder="Ex: Réserve, cuisine, extérieur..."></textarea>
+            </div>
+          </div>
+        </section>
 
-      const getCoords = (e, canvas) => {
+        <!-- Observations -->
+        <section class="bg-gray-50 border border-gray-300 p-3 mb-6">
+          <div class="flex flex-col md:flex-row gap-4 justify-between">
+            <div class="flex items-center gap-4">
+              <span class="font-bold text-sm">Présence de traces de rongeurs :</span>
+              <label class="flex items-center gap-1 cursor-pointer">
+                <input type="radio" name="traces" value="oui" class="w-5 h-5" /> Oui
+              </label>
+              <label class="flex items-center gap-1 cursor-pointer">
+                <input type="radio" name="traces" value="non" class="w-5 h-5" /> Non
+              </label>
+            </div>
+
+            <div class="flex flex-col gap-1">
+              <span class="font-bold text-sm mb-1">Pression de rongeurs :</span>
+              <div class="flex gap-4">
+                <label class="flex items-center gap-1 cursor-pointer">
+                  <input type="radio" name="pressure" value="suspicion" /> Suspicion
+                </label>
+                <label class="flex items-center gap-1 cursor-pointer">
+                  <input type="radio" name="pressure" value="effective" /> Traces effectives
+                </label>
+              </div>
+            </div>
+          </div>
+        </section>
+
+        <!-- Treatment Type -->
+        <section class="bg-gray-700 text-white p-2 mb-2 font-bold uppercase text-center md:text-left">
+          Type de Traitement Effectué
+        </section>
+        <div class="flex gap-6 mb-4 px-2">
+          <label class="flex items-center gap-2 font-bold cursor-pointer">
+            <input type="radio" name="treatment" value="conventional" checked class="w-5 h-5" />
+            Conventionnel
+          </label>
+          <label class="flex items-center gap-2 font-bold cursor-pointer">
+            <input type="radio" name="treatment" value="alternative" class="w-5 h-5" />
+            Alternatif
+          </label>
+        </div>
+
+        <!-- Text areas -->
+        <div class="print-break-inside-avoid">
+          <section class="bg-gray-700 text-white p-2 mb-2 font-bold uppercase text-center md:text-left">
+            Détails des Actions Correctives / Préventives Recommandées
+          </section>
+          <textarea
+            rows="6"
+            id="correctiveActions"
+            spellcheck="true"
+            class="w-full border border-gray-400 p-3 mb-6 text-base"
+            placeholder="Décrivez les actions recommandées..."
+          ></textarea>
+
+          <section class="bg-gray-700 text-white p-2 mb-2 font-bold uppercase text-center md:text-left">
+            Détail des Avancées des Recommandations Antérieures
+          </section>
+          <textarea
+            rows="5"
+            id="previousRecommendations"
+            spellcheck="true"
+            class="w-full border border-gray-400 p-3 mb-6 text-base"
+            placeholder="État d'avancement des recommandations précédentes..."
+          ></textarea>
+
+          <!-- Signatures -->
+          <section class="mb-4">
+            <p class="text-xs text-justify mb-4">
+              Le client reconnaît que les travaux ont été réalisés conformément au bon de commande et déclare avoir reçu l'ensemble des documents nécessaires.
+            </p>
+            <div class="grid grid-cols-1 md:grid-cols-2 gap-8">
+              <div class="border border-gray-300 rounded p-4 bg-white">
+                <label class="block text-sm font-bold mb-2 text-gray-700 uppercase">Signature Applicateur</label>
+                <div class="border-2 border-dashed border-gray-300 rounded relative">
+                  <canvas id="sigApplicator" width="400" height="150" class="w-full h-32 touch-none cursor-crosshair"></canvas>
+                  <div id="placeholderApp" class="absolute inset-0 flex items-center justify-center pointer-events-none text-gray-400 text-sm">
+                    Signer ici
+                  </div>
+                </div>
+                <div class="mt-2 flex justify-end no-print">
+                  <button type="button" onclick="clearSignature('sigApplicator', 'placeholderApp')" class="text-xs text-red-600 hover:text-red-800 underline">
+                    Effacer la signature
+                  </button>
+                </div>
+              </div>
+
+              <div class="border border-gray-300 rounded p-4 bg-white">
+                <label class="block text-sm font-bold mb-2 text-gray-700 uppercase">Signature Client</label>
+                <div class="border-2 border-dashed border-gray-300 rounded relative">
+                  <canvas id="sigClient" width="400" height="150" class="w-full h-32 touch-none cursor-crosshair"></canvas>
+                  <div id="placeholderClient" class="absolute inset-0 flex items-center justify-center pointer-events-none text-gray-400 text-sm">
+                    Signer ici
+                  </div>
+                </div>
+                <div class="mt-2 flex justify-end no-print">
+                  <button type="button" onclick="clearSignature('sigClient', 'placeholderClient')" class="text-xs text-red-600 hover:text-red-800 underline">
+                    Effacer la signature
+                  </button>
+                </div>
+              </div>
+            </div>
+          </section>
+        </div>
+
+        <div class="text-center text-xs text-gray-500 mt-8 border-t pt-2 no-print">
+          TSF NORMANDIE - Rapport Digital
+        </div>
+        <div class="text-right text-[10px] text-gray-400 hidden print:block mt-8">
+          Membre du réseau APROLLIANCE
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    // Initialize date and time
+    document.getElementById('date').valueAsDate = new Date();
+    document.getElementById('time').value = new Date().toLocaleTimeString('fr-FR', { hour: '2-digit', minute: '2-digit' });
+
+    // Signature functionality
+    function initSignature(canvasId) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      let isDrawing = false;
+
+      const getCoords = (e) => {
         const rect = canvas.getBoundingClientRect();
-        if (e.touches || e.changedTouches) {
-          const t = (e.touches && e.touches[0]) || (e.changedTouches && e.changedTouches[0]);
-          if (!t) return { offsetX: 0, offsetY: 0 };
-          return { offsetX: t.clientX - rect.left, offsetY: t.clientY - rect.top };
-        }
-        return { offsetX: e.clientX - rect.left, offsetY: e.clientY - rect.top };
+        const touch = e.touches ? e.touches[0] : e;
+        return {
+          x: touch.clientX - rect.left,
+          y: touch.clientY - rect.top
+        };
       };
 
       const startDrawing = (e) => {
-        if (e.preventDefault) e.preventDefault();
-        setIsDrawing(true);
-        setIsEmpty(false);
-        const ctx = canvasRef.current.getContext('2d');
-        const { offsetX, offsetY } = getCoords(e, canvasRef.current);
+        e.preventDefault();
+        isDrawing = true;
+        const placeholder = canvasId === 'sigApplicator' ? 'placeholderApp' : 'placeholderClient';
+        document.getElementById(placeholder).style.display = 'none';
+        const coords = getCoords(e);
         ctx.beginPath();
-        ctx.moveTo(offsetX, offsetY);
+        ctx.moveTo(coords.x, coords.y);
       };
 
       const draw = (e) => {
         if (!isDrawing) return;
-        if (e.preventDefault) e.preventDefault();
-        const ctx = canvasRef.current.getContext('2d');
-        const { offsetX, offsetY } = getCoords(e, canvasRef.current);
-        ctx.lineTo(offsetX, offsetY);
+        e.preventDefault();
+        const coords = getCoords(e);
+        ctx.lineTo(coords.x, coords.y);
         ctx.stroke();
       };
 
       const stopDrawing = () => {
-        if (isDrawing) onSave(canvasRef.current.toDataURL());
-        setIsDrawing(false);
+        isDrawing = false;
       };
 
-      const clear = () => {
-        const ctx = canvasRef.current.getContext('2d');
-        ctx.clearRect(0, 0, 400, 150);
-        onClear();
-        setIsEmpty(true);
-      };
-
-      return (
-        <div className="border border-gray-300 rounded p-4 bg-white print-break-inside-avoid">
-          <label className="block text-sm font-bold mb-2 text-gray-700 uppercase">{label}</label>
-          <div className="border-2 border-dashed border-gray-300 rounded relative">
-            <canvas
-              ref={canvasRef}
-              width={400}
-              height={150}
-              className="w-full h-32 touch-none cursor-crosshair"
-              onMouseDown={startDrawing}
-              onMouseMove={draw}
-              onMouseUp={stopDrawing}
-              onMouseLeave={stopDrawing}
-              onTouchStart={startDrawing}
-              onTouchMove={draw}
-              onTouchEnd={stopDrawing}
-            />
-            {isEmpty && (
-              <div className="absolute inset-0 flex items-center justify-center pointer-events-none text-gray-400 text-sm">
-                Signer ici
-              </div>
-            )}
-          </div>
-          <div className="mt-2 flex justify-end no-print">
-            <button type="button" onClick={clear} className="text-xs text-red-600 hover:text-red-800 underline">
-              Effacer la signature
-            </button>
-          </div>
-        </div>
-      );
-    };function App() {
-      const [data, setData] = useState(INITIAL_REPORT);
-      const [isSignedIn, setIsSignedIn] = useState(false);
-      const [saveStatus, setSaveStatus] = useState('');
-      const [showLoginModal, setShowLoginModal] = useState(true);
-      const autoSaveTimer = useRef(null);
-
-      const updateData = (field, value) => {
-        setData(prev => ({ ...prev, [field]: value }));
-      };
-
-      useEffect(() => {
-        if (!isSignedIn || !data.clientCoordinates) return;
-        
-        if (autoSaveTimer.current) clearTimeout(autoSaveTimer.current);
-        
-        autoSaveTimer.current = setTimeout(async () => {
-          try {
-            setSaveStatus('saving');
-            await GoogleDriveManager.saveDraft(data);
-            setSaveStatus('saved');
-            setTimeout(() => setSaveStatus(''), 2000);
-          } catch (error) {
-            console.error('Auto-save error:', error);
-            setSaveStatus('error');
-            setTimeout(() => setSaveStatus(''), 3000);
-          }
-        }, 30000);
-        
-        return () => clearTimeout(autoSaveTimer.current);
-      }, [data, isSignedIn]);
-
-      const handleGoogleSignIn = async () => {
-        try {
-          await GoogleDriveManager.signIn();
-          setIsSignedIn(true);
-          setShowLoginModal(false);
-          alert('✅ Connecté à Google Drive !');
-        } catch (error) {
-          alert('❌ Erreur de connexion. Réessayez.');
-        }
-      };
-
-      const handleSavePDF = async () => {
-        if (!data.clientCoordinates) {
-          alert('⚠️ Veuillez renseigner le nom du client');
-          return;
-        }
-        
-        if (!data.signatureApplicator || !data.signatureClient) {
-          if (!confirm('⚠️ Signatures manquantes. Continuer quand même ?')) return;
-        }
-
-        try {
-          setSaveStatus('saving');
-          
-          const element = document.getElementById("report").cloneNode(true);
-          const sigCanvases = element.querySelectorAll('canvas');
-          
-          if (sigCanvases[0] && data.signatureApplicator) {
-            sigCanvases[0].outerHTML = `<img src="${data.signatureApplicator}" style="max-width:100%; height:auto;"/>`;
-          }
-          if (sigCanvases[1] && data.signatureClient) {
-            sigCanvases[1].outerHTML = `<img src="${data.signatureClient}" style="max-width:100%; height:auto;"/>`;
-          }
-
-          const filename = `TSF_${(data.clientCoordinates || 'client').replace(/[^a-zA-Z0-9]/g, '_')}_${data.date.split('-').reverse().join('-')}.pdf`;
-
-          const worker = window.html2pdf()
-            .set({
-              margin: 8,
-              filename,
-              image: { type: 'jpeg', quality: 0.95 },
-              html2canvas: { scale: 2, useCORS: true },
-              jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
-            })
-            .from(element);
-
-          const pdfBlob = await worker.outputPdf('blob');
-          
-          if (isSignedIn) {
-            await GoogleDriveManager.uploadFile(pdfBlob, filename);
-            setSaveStatus('saved');
-            alert(`✅ PDF sauvegardé sur Google Drive !\n📁 TSF Rapports/${new Date().getFullYear()}/${new Date().toLocaleDateString('fr-FR', { month: 'long' })}/`);
-          } else {
-            const url = URL.createObjectURL(pdfBlob);
-            const a = document.createElement('a');
-            a.href = url;
-            a.download = filename;
-            a.click();
-            URL.revokeObjectURL(url);
-            alert('📥 PDF téléchargé. Connectez-vous à Drive pour sauvegarde automatique.');
-          }
-          
-          setTimeout(() => setSaveStatus(''), 2000);
-        } catch (error) {
-          console.error('PDF error:', error);
-          setSaveStatus('error');
-          alert('❌ Erreur génération PDF');
-        }
-      };
-
-      const handlePhotoUpload = (e) => {
-        if (e.target.files) {
-          Array.from(e.target.files).forEach(file => {
-            const reader = new FileReader();
-            reader.onloadend = () => setData(prev => ({ ...prev, photos: [...prev.photos, reader.result] }));
-            reader.readAsDataURL(file);
-          });
-        }
-      };
-
-      const removePhoto = (index) => setData(prev => ({ ...prev, photos: prev.photos.filter((_, i) => i !== index) }));
-
-      const addChemicalRow = () => setData(prev => ({
-        ...prev,
-        chemicalTreatments: [...prev.chemicalTreatments, { id: uid(), isToxic: true, productName: '', activeMaterial: '', quantity: '', stationNumber: '' }]
-      }));
-
-      const updateChemicalRow = (id, field, value) => setData(prev => ({
-        ...prev,
-        chemicalTreatments: prev.chemicalTreatments.map(r => r.id === id ? { ...r, [field]: value } : r)
-      }));
-
-      const removeChemicalRow = (id) => setData(prev => ({
-        ...prev,
-        chemicalTreatments: prev.chemicalTreatments.filter(r => r.id !== id)
-      }));
-
-      const addMechanicalRow = () => setData(prev => ({
-        ...prev,
-        mechanicalTreatments: [...prev.mechanicalTreatments, { id: uid(), type: MechanicalType.TAPETTE, quantity: '', stationNumber: '' }]
-      }));
-
-      const updateMechanicalRow = (id, field, value) => setData(prev => ({
-        ...prev,
-        mechanicalTreatments: prev.mechanicalTreatments.map(r => r.id === id ? { ...r, [field]: value } : r)
-      }));
-
-      const removeMechanicalRow = (id) => setData(prev => ({
-        ...prev,
-        mechanicalTreatments: prev.mechanicalTreatments.filter(r => r.id !== id)
-      }));
-
-      return (
-        <div className="min-h-screen bg-gray-100 p-4 md:p-8 font-sans">
-
-          {showLoginModal && !isSignedIn && (
-            <div className="fixed inset-0 bg-black bg-opacity-50 flex items-center justify-center p-4 z-50">
-              <div className="bg-white rounded-lg p-8 max-w-md w-full text-center">
-                <div className="mb-6">
-                  <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-                    <svg className="w-8 h-8 text-blue-600" fill="currentColor" viewBox="0 0 20 20">
-                      <path d="M3 12v3c0 1.657 3.134 3 7 3s7-1.343 7-3v-3c0 1.657-3.134 3-7 3s-7-1.343-7-3z"/>
-                      <path d="M3 7v3c0 1.657 3.134 3 7 3s7-1.343 7-3V7c0 1.657-3.134 3-7 3S3 8.657 3 7z"/>
-                      <path d="M17 5c0 1.657-3.134 3-7 3S3 6.657 3 5s3.134-3 7-3 7 1.343 7 3z"/>
-                    </svg>
-                  </div>
-                  <h2 className="text-2xl font-bold text-gray-800 mb-2">TSF Rapports</h2>
-                  <p className="text-gray-600 text-sm">Connectez-vous pour sauvegarder automatiquement sur Google Drive</p>
-                </div>
-                
-                <button onClick={handleGoogleSignIn} className="google-btn mx-auto mb-4">
-                  <svg width="18" height="18" viewBox="0 0 18 18">
-                    <path fill="#4285F4" d="M17.64 9.2c0-.637-.057-1.251-.164-1.84H9v3.481h4.844c-.209 1.125-.843 2.078-1.796 2.717v2.258h2.908c1.702-1.567 2.684-3.874 2.684-6.615z"/>
-                    <path fill="#34A853" d="M9.003 18c2.43 0 4.467-.806 5.956-2.18L12.05 13.56c-.806.54-1.836.86-3.047.86-2.344 0-4.328-1.584-5.036-3.711H.96v2.332C2.44 15.983 5.485 18 9.003 18z"/>
-                    <path fill="#FBBC05" d="M3.964 10.712c-.18-.54-.282-1.117-.282-1.71 0-.593.102-1.17.282-1.71V4.96H.957C.347 6.175 0 7.55 0 9.002c0 1.452.348 2.827.957 4.042l3.007-2.332z"/>
-                    <path fill="#EA4335" d="M9.003 3.58c1.321 0 2.508.454 3.44 1.345l2.582-2.58C13.464.891 11.428 0 9.002 0 5.485 0 2.44 2.017.96 4.958L3.967 7.29c.708-2.127 2.692-3.71 5.036-3.71z"/>
-                  </svg>
-                  Se connecter avec Google
-                </button>
-                
-                <button 
-                  onClick={() => setShowLoginModal(false)} 
-                  className="text-sm text-gray-500 hover:text-gray-700 underline"
-                >
-                  Continuer sans connexion (téléchargement local)
-                </button>
-              </div>
-            </div>
-          )}
-
-          {saveStatus && (
-            <div className={`save-indicator ${saveStatus}`}>
-              {saveStatus === 'saving' && '💾 Sauvegarde...'}
-              {saveStatus === 'saved' && '✅ Sauvegardé sur Drive'}
-              {saveStatus === 'error' && '❌ Erreur sauvegarde'}
-            </div>
-          )}
-
-          <div className="max-w-4xl mx-auto mb-6 flex flex-wrap gap-3 items-center justify-between no-print sticky top-0 z-40 bg-white/95 backdrop-blur p-3 shadow-lg rounded-lg">
-            <div className="flex items-center gap-3">
-              <h1 className="text-lg font-bold text-gray-800">TSF Mobile</h1>
-              {isSignedIn && (
-                <span className="text-xs bg-green-100 text-green-700 px-2 py-1 rounded-full">✓ Drive connecté</span>
-              )}
-            </div>
-            <div className="flex flex-wrap gap-2 text-sm">
-              {!isSignedIn && (
-                <button onClick={handleGoogleSignIn} className="bg-blue-600 text-white px-4 py-2 rounded-lg shadow hover:bg-blue-700 font-medium">
-                  🔗 Connecter Drive
-                </button>
-              )}
-              <button onClick={handleSavePDF} className="bg-green-600 text-white px-4 py-2 rounded-lg shadow hover:bg-green-700 font-bold">
-                💾 Enregistrer PDF
-              </button>
-            </div>
-          </div><div id="report" className="max-w-4xl mx-auto bg-white shadow-xl md:p-10 p-4 print:shadow-none print:p-0">
-
-            <header className="flex flex-col md:flex-row gap-6 border-b-2 border-black pb-4 mb-6">
-              <div className="w-full md:w-1/3 flex flex-col items-center justify-center text-center">
-                <div className="w-full h-auto border-2 border-black p-2 mb-2 flex items-center justify-center font-bold text-2xl tracking-widest text-gray-800">
-                  TSF NORMANDIE
-                </div>
-                <p className="text-xs">Impasse des Primevères - ZA du Domaine Ducey</p>
-                <p className="text-xs font-bold">50220 DUCEY</p>
-                <p className="text-xs">Tel. 02 50 26 91 30</p>
-              </div>
-              <div className="w-full md:w-2/3 flex flex-col justify-between text-right">
-                <p className="text-xs italic text-gray-600 border-b border-gray-300 pb-1">Hygiène de l'air / Hygiène anti-parasitaire / Décapages</p>
-                <h1 className="text-2xl font-black uppercase mt-4 text-center md:text-right">Rapport d'Intervention - Dératisation</h1>
-              </div>
-            </header>
-
-            <section className="grid grid-cols-1 md:grid-cols-2 gap-x-8 gap-y-4 mb-6">
-              <div className="space-y-3">
-                <div className="flex flex-col">
-                  <label className="font-bold text-sm mb-1">Date Intervention:</label>
-                  <input type="date" value={data.date} onChange={e => updateData('date', e.target.value)} className="border border-gray-400 px-3 py-2 rounded" />
-                </div>
-                <div className="flex flex-col">
-                  <label className="font-bold text-sm mb-1">Nom applicateur:</label>
-                  <input type="text" value={data.applicatorName} onChange={e => updateData('applicatorName', e.target.value)} className="border border-gray-400 px-3 py-2 rounded" />
-                </div>
-                <div className="flex flex-col">
-                  <label className="font-bold text-sm mb-1">Passage suivant:</label>
-                  <input type="text" placeholder="Date prévisionnelle" value={data.nextVisitDate} onChange={e => updateData('nextVisitDate', e.target.value)} className="border border-gray-400 px-3 py-2 rounded" />
-                </div>
-              </div>
-
-              <div className="space-y-3">
-                <div className="flex flex-col">
-                  <label className="font-bold text-sm mb-1">Heure Intervention:</label>
-                  <input type="time" value={data.time} onChange={e => updateData('time', e.target.value)} className="border border-gray-400 px-3 py-2 rounded" />
-                </div>
-                <div className="flex flex-col">
-                  <label className="font-bold text-sm mb-1">Client (Nom complet):</label>
-                  <input type="text" value={data.clientCoordinates} onChange={e => updateData('clientCoordinates', e.target.value)} className="border border-gray-400 px-3 py-2 rounded text-base" placeholder="Ex: Boulangerie Martin, 14 rue..." />
-                </div>
-                <div className="flex flex-col">
-                  <label className="font-bold text-sm mb-1">Lieux traités:</label>
-                  <textarea rows="2" value={data.locationsTreated} onChange={e => updateData('locationsTreated', e.target.value)} className="border border-gray-400 px-3 py-2 rounded" placeholder="Ex: Réserve, cuisine, extérieur..." />
-                </div>
-              </div>
-            </section>
-
-            <section className="bg-gray-50 border border-gray-300 p-3 mb-6">
-              <div className="flex flex-col md:flex-row gap-4 justify-between">
-                <div className="flex items-center gap-4">
-                  <span className="font-bold text-sm">Présence de traces de rongeurs :</span>
-                  <label className="flex items-center gap-1 cursor-pointer">
-                    <input type="radio" name="tracesRodents" checked={data.tracesRodents === true} onChange={() => updateData('tracesRodents', true)} className="w-5 h-5" /> Oui
-                  </label>
-                  <label className="flex items-center gap-1 cursor-pointer">
-                    <input type="radio" name="tracesRodents" checked={data.tracesRodents === false} onChange={() => updateData('tracesRodents', false)} className="w-5 h-5" /> Non
-                  </label>
-                </div>
-
-                <div className="flex flex-col gap-1">
-                  <span className="font-bold text-sm mb-1">Pression de rongeurs :</span>
-                  <div className="flex gap-4">
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <input type="radio" name="pressure" checked={data.pressureType === 'suspicion'} onChange={() => updateData('pressureType', 'suspicion')} /> Suspicion
-                    </label>
-                    <label className="flex items-center gap-1 cursor-pointer">
-                      <input type="radio" name="pressure" checked={data.pressureType === 'effective'} onChange={() => updateData('pressureType', 'effective')} /> Traces effectives
-                    </label>
-                  </div>
-                </div>
-              </div>
-            </section>
-
-            <section className="bg-gray-700 text-white p-2 mb-2 font-bold uppercase text-center md:text-left">
-              Type de Traitement Effectué
-            </section>
-            <div className="flex gap-6 mb-4 px-2">
-              <label className="flex items-center gap-2 font-bold cursor-pointer">
-                <input type="radio" checked={data.treatmentType === 'conventional'} onChange={() => updateData('treatmentType', 'conventional')} className="w-5 h-5" />
-                Conventionnel
-              </label>
-              <label className="flex items-center gap-2 font-bold cursor-pointer">
-                <input type="radio" checked={data.treatmentType === 'alternative'} onChange={() => updateData('treatmentType', 'alternative')} className="w-5 h-5" />
-                Alternatif
-              </label>
-            </div>
-
-            <div className="mb-4 overflow-x-auto">
-              <table className="w-full text-sm border-collapse border border-gray-400">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border border-gray-400 p-2 w-24">Moyen</th>
-                    <th className="border border-gray-400 p-2">Nom produit</th>
-                    <th className="border border-gray-400 p-2">Matière active</th>
-                    <th className="border border-gray-400 p-2 w-20">Quantité</th>
-                    <th className="border border-gray-400 p-2 w-24">N° Postes</th>
-                    <th className="border border-gray-400 p-2 w-10 no-print"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.chemicalTreatments.map(row => (
-                    <tr key={row.id}>
-                      <td className="border border-gray-400 p-2">
-                        <select className="w-full bg-transparent" value={row.isToxic ? 'Toxique' : 'Placebo'} onChange={e => updateChemicalRow(row.id, 'isToxic', e.target.value === 'Toxique')}>
-                          <option value="Toxique">Toxique</option>
-                          <option value="Placebo">Placebo</option>
-                        </select>
-                      </td>
-                      <td className="border border-gray-400 p-1">
-                        <input className="w-full p-1" value={row.productName} onChange={e => updateChemicalRow(row.id, 'productName', e.target.value)} />
-                      </td>
-                      <td className="border border-gray-400 p-1">
-                        <input className="w-full p-1" value={row.activeMaterial} onChange={e => updateChemicalRow(row.id, 'activeMaterial', e.target.value)} />
-                      </td>
-                      <td className="border border-gray-400 p-1">
-                        <input className="w-full p-1" value={row.quantity} onChange={e => updateChemicalRow(row.id, 'quantity', e.target.value)} />
-                      </td>
-                      <td className="border border-gray-400 p-1">
-                        <input className="w-full p-1" value={row.stationNumber} onChange={e => updateChemicalRow(row.id, 'stationNumber', e.target.value)} />
-                      </td>
-                      <td className="border border-gray-400 p-1 text-center no-print">
-                        <button onClick={() => removeChemicalRow(row.id)} className="text-red-500 font-bold text-xl">×</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button onClick={addChemicalRow} className="mt-2 text-sm bg-blue-600 text-white px-4 py-2 rounded no-print hover:bg-blue-700">
-                + Ajouter Produit
-              </button>
-            </div>
-
-            <div className="mb-6 overflow-x-auto">
-              <table className="w-full text-sm border-collapse border border-gray-400">
-                <thead>
-                  <tr className="bg-gray-100">
-                    <th className="border border-gray-400 p-2 w-24">Moyen</th>
-                    <th className="border border-gray-400 p-2">Type</th>
-                    <th className="border border-gray-400 p-2 w-20">Quantité</th>
-                    <th className="border border-gray-400 p-2 w-24">N° Postes</th>
-                    <th className="border border-gray-400 p-2 w-10 no-print"></th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {data.mechanicalTreatments.map(row => (
-                    <tr key={row.id}>
-                      <td className="border border-gray-400 p-2 text-center bg-gray-50">Mécanique</td>
-                      <td className="border border-gray-400 p-1">
-                        <select className="w-full bg-transparent" value={row.type} onChange={e => updateMechanicalRow(row.id, 'type', e.target.value)}>
-                          <option value={MechanicalType.TAPETTE}>Tapette</option>
-                          <option value={MechanicalType.PLAQUE_GLUE}>Plaque de Glue</option>
-                          <option value={MechanicalType.AUTRES}>Autres</option>
-                        </select>
-                      </td>
-                      <td className="border border-gray-400 p-1">
-                        <input className="w-full p-1" value={row.quantity} onChange={e => updateMechanicalRow(row.id, 'quantity', e.target.value)} />
-                      </td>
-                      <td className="border border-gray-400 p-1">
-                        <input className="w-full p-1" value={row.stationNumber} onChange={e => updateMechanicalRow(row.id, 'stationNumber', e.target.value)} />
-                      </td>
-                      <td className="border border-gray-400 p-1 text-center no-print">
-                        <button onClick={() => removeMechanicalRow(row.id)} className="text-red-500 font-bold text-xl">×</button>
-                      </td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-              <button onClick={addMechanicalRow} className="mt-2 text-sm bg-blue-600 text-white px-4 py-2 rounded no-print hover:bg-blue-700">
-                + Ajouter Dispositif Mécanique
-              </button>
-            </div>
-
-            <section className="mb-6">
-              <h3 className="font-bold text-center uppercase mb-2 text-sm bg-gray-200 py-1">Rajout de Postes d'Appâtage</h3>
-              <table className="w-full text-sm border-collapse border border-gray-400 mb-4">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="border border-gray-400 p-1 w-20">Type</th>
-                    <th className="border border-gray-400 p-1">Lieu</th>
-                    <th className="border border-gray-400 p-1 w-32">Non sécurisés (Qté)</th>
-                    <th className="border border-gray-400 p-1 w-32">Sécurisés (Qté)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="border border-gray-400 p-1 font-bold">Souris</td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2" value={data.additions.mice.location}
-                        onChange={e => setData({...data, additions: {...data.additions, mice: {...data.additions.mice, location: e.target.value}}})} />
-                    </td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2 text-center" value={data.additions.mice.nonSecuredQty}
-                        onChange={e => setData({...data, additions: {...data.additions, mice: {...data.additions.mice, nonSecuredQty: e.target.value}}})} />
-                    </td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2 text-center" value={data.additions.mice.securedQty}
-                        onChange={e => setData({...data, additions: {...data.additions, mice: {...data.additions.mice, securedQty: e.target.value}}})} />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="border border-gray-400 p-1 font-bold">Rats</td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2" value={data.additions.rats.location}
-                        onChange={e => setData({...data, additions: {...data.additions, rats: {...data.additions.rats, location: e.target.value}}})} />
-                    </td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2 text-center" value={data.additions.rats.nonSecuredQty}
-                        onChange={e => setData({...data, additions: {...data.additions, rats: {...data.additions.rats, nonSecuredQty: e.target.value}}})} />
-                    </td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2 text-center" value={data.additions.rats.securedQty}
-                        onChange={e => setData({...data, additions: {...data.additions, rats: {...data.additions.rats, securedQty: e.target.value}}})} />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <h3 className="font-bold text-center uppercase mb-2 text-sm bg-gray-200 py-1">Remplacement de Postes d'Appâtage</h3>
-              <table className="w-full text-sm border-collapse border border-gray-400">
-                <thead>
-                  <tr className="bg-gray-50">
-                    <th className="border border-gray-400 p-1 w-20">Type</th>
-                    <th className="border border-gray-400 p-1">Lieu</th>
-                    <th className="border border-gray-400 p-1 w-32">Non sécurisés (Qté)</th>
-                    <th className="border border-gray-400 p-1 w-32">Sécurisés (Qté)</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  <tr>
-                    <td className="border border-gray-400 p-1 font-bold">Souris</td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2" value={data.replacements.mice.location}
-                        onChange={e => setData({...data, replacements: {...data.replacements, mice: {...data.replacements.mice, location: e.target.value}}})} />
-                    </td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2 text-center" value={data.replacements.mice.nonSecuredQty}
-                        onChange={e => setData({...data, replacements: {...data.replacements, mice: {...data.replacements.mice, nonSecuredQty: e.target.value}}})} />
-                    </td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2 text-center" value={data.replacements.mice.securedQty}
-                        onChange={e => setData({...data, replacements: {...data.replacements, mice: {...data.replacements.mice, securedQty: e.target.value}}})} />
-                    </td>
-                  </tr>
-                  <tr>
-                    <td className="border border-gray-400 p-1 font-bold">Rats</td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2" value={data.replacements.rats.location}
-                        onChange={e => setData({...data, replacements: {...data.replacements, rats: {...data.replacements.rats, location: e.target.value}}})} />
-                    </td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2 text-center" value={data.replacements.rats.nonSecuredQty}
-                        onChange={e => setData({...data, replacements: {...data.replacements, rats: {...data.replacements.rats, nonSecuredQty: e.target.value}}})} />
-                    </td>
-                    <td className="border border-gray-400 p-0">
-                      <input className="w-full h-full p-2 text-center" value={data.replacements.rats.securedQty}
-                        onChange={e => setData({...data, replacements: {...data.replacements, rats: {...data.replacements.rats, securedQty: e.target.value}}})} />
-                    </td>
-                  </tr>
-                </tbody>
-              </table>
-
-              <div className="flex gap-4 mt-3 text-sm">
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="w-5 h-5" checked={data.techSheetsProvided} onChange={e => updateData('techSheetsProvided', e.target.checked)} />
-                  Fiches techniques fournies
-                </label>
-                <label className="flex items-center gap-2">
-                  <input type="checkbox" className="w-5 h-5" checked={data.safetySheetsProvided} onChange={e => updateData('safetySheetsProvided', e.target.checked)} />
-                  FDS fournies
-                </label>
-              </div>
-            </section>
-
-            <div className="print-break-inside-avoid">
-              <section className="bg-gray-700 text-white p-2 mb-2 font-bold uppercase text-center md:text-left">
-                Détails des Actions Correctives / Préventives Recommandées
-              </section>
-              <textarea
-                rows={6}
-                spellCheck={true}
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                className="w-full border border-gray-400 p-3 mb-6 text-base"
-                value={data.correctiveActions}
-                onChange={e => updateData('correctiveActions', e.target.value)}
-                placeholder="Décrivez les actions recommandées..."
-              />
-
-              <section className="bg-gray-700 text-white p-2 mb-2 font-bold uppercase text-center md:text-left">
-                Détail des Avancées des Recommandations Antérieures
-              </section>
-              <textarea
-                rows={5}
-                spellCheck={true}
-                autoCorrect="on"
-                autoCapitalize="sentences"
-                className="w-full border border-gray-400 p-3 mb-6 text-base"
-                value={data.previousRecommendationsStatus}
-                onChange={e => updateData('previousRecommendationsStatus', e.target.value)}
-                placeholder="État d'avancement des recommandations précédentes..."
-              />
-
-              <section className="mb-6 print-break-inside-avoid">
-                <div className="bg-gray-700 text-white p-2 mb-2 font-bold uppercase flex justify-between items-center">
-                  <span>Photos de l'intervention</span>
-                  <label className="bg-white text-gray-800 text-sm px-3 py-1 rounded cursor-pointer hover:bg-gray-200 no-print">
-                    📷 Ajouter Photo
-                    <input type="file" accept="image/*" capture="environment" multiple className="hidden" onChange={handlePhotoUpload} />
-                  </label>
-                </div>
-
-                {data.photos.length > 0 ? (
-                  <div className="grid grid-cols-2 md:grid-cols-3 gap-4 border p-2 border-gray-200">
-                    {data.photos.map((photo, index) => (
-                      <div key={index} className="relative group border border-gray-300 p-1 bg-white">
-                        <img src={photo} className="w-full h-32 object-cover" alt={`Photo ${index + 1}`} />
-                        <button onClick={() => removePhoto(index)} className="absolute top-0 right-0 bg-red-600 text-white w-8 h-8 flex items-center justify-center rounded-bl opacity-70 hover:opacity-100 no-print text-xl">
-                          ×
-                        </button>
-                      </div>
-                    ))}
-                  </div>
-                ) : (
-                  <div className="border-2 border-dashed border-gray-300 p-8 text-center text-gray-500 italic no-print">
-                    Aucune photo ajoutée.
-                  </div>
-                )}
-              </section>
-
-              <section className="mb-4">
-                <p className="text-xs text-justify mb-4">
-                  Le client reconnaît que les travaux ont été réalisés conformément au bon de commande et déclare avoir reçu l'ensemble des documents nécessaires.
-                </p>
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-8">
-                  <SignaturePad label="Signature Applicateur" onSave={d => updateData('signatureApplicator', d)} onClear={() => updateData('signatureApplicator', null)} initialData={data.signatureApplicator} />
-                  <SignaturePad label="Signature Client" onSave={d => updateData('signatureClient', d)} onClear={() => updateData('signatureClient', null)} initialData={data.signatureClient} />
-                </div>
-              </section>
-            </div>
-
-            <div className="text-center text-xs text-gray-500 mt-8 border-t pt-2 no-print">
-              TSF NORMANDIE - Rapport Digital avec sauvegarde Google Drive
-            </div>
-            <div className="text-right text-[10px] text-gray-400 hidden print:block mt-8">
-              Membre du réseau APROLLIANCE
-            </div>
-          </div>
-        </div>
-      );
+      canvas.addEventListener('mousedown', startDrawing);
+      canvas.addEventListener('mousemove', draw);
+      canvas.addEventListener('mouseup', stopDrawing);
+      canvas.addEventListener('mouseleave', stopDrawing);
+      canvas.addEventListener('touchstart', startDrawing);
+      canvas.addEventListener('touchmove', draw);
+      canvas.addEventListener('touchend', stopDrawing);
     }
 
-    const root = ReactDOM.createRoot(document.getElementById('root'));
-    root.render(<App />);
+    function clearSignature(canvasId, placeholderId) {
+      const canvas = document.getElementById(canvasId);
+      const ctx = canvas.getContext('2d');
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      document.getElementById(placeholderId).style.display = 'flex';
+    }
+
+    initSignature('sigApplicator');
+    initSignature('sigClient');
+
+    // Save draft
+    function saveDraft() {
+      const data = {
+        date: document.getElementById('date').value,
+        time: document.getElementById('time').value,
+        applicatorName: document.getElementById('applicatorName').value,
+        client: document.getElementById('client').value,
+        nextVisit: document.getElementById('nextVisit').value,
+        locations: document.getElementById('locations').value,
+        correctiveActions: document.getElementById('correctiveActions').value,
+        previousRecommendations: document.getElementById('previousRecommendations').value
+      };
+      try {
+        localStorage.setItem('tsf_draft', JSON.stringify(data));
+        alert('✅ Brouillon sauvegardé !');
+      } catch(e) {
+        alert('⚠️ Impossible de sauvegarder localement');
+      }
+    }
+
+    // Load draft on startup
+    window.addEventListener('load', () => {
+      try {
+        const saved = localStorage.getItem('tsf_draft');
+        if (saved) {
+          const data = JSON.parse(saved);
+          document.getElementById('date').value = data.date || '';
+          document.getElementById('time').value = data.time || '';
+          document.getElementById('applicatorName').value = data.applicatorName || '';
+          document.getElementById('client').value = data.client || '';
+          document.getElementById('nextVisit').value = data.nextVisit || '';
+          document.getElementById('locations').value = data.locations || '';
+          document.getElementById('correctiveActions').value = data.correctiveActions || '';
+          document.getElementById('previousRecommendations').value = data.previousRecommendations || '';
+        }
+      } catch(e) {}
+    });
+
+    // Generate PDF
+    async function generatePDF() {
+      const client = document.getElementById('client').value;
+      if (!client) {
+        alert('⚠️ Veuillez renseigner le nom du client');
+        return;
+      }
+
+      try {
+        const element = document.getElementById('report').cloneNode(true);
+        
+        // Convert signatures to images
+        const sigApp = document.getElementById('sigApplicator');
+        const sigCli = document.getElementById('sigClient');
+        
+        const canvases = element.querySelectorAll('canvas');
+        if (canvases[0]) {
+          canvases[0].outerHTML = `<img src="${sigApp.toDataURL()}" style="max-width:100%; height:auto;"/>`;
+        }
+        if (canvases[1]) {
+          canvases[1].outerHTML = `<img src="${sigCli.toDataURL()}" style="max-width:100%; height:auto;"/>`;
+        }
+
+        const date = document.getElementById('date').value.split('-').reverse().join('-');
+        const filename = `TSF_${client.replace(/[^a-zA-Z0-9]/g, '_')}_${date}.pdf`;
+
+        const worker = html2pdf()
+          .set({
+            margin: 8,
+            filename,
+            image: { type: 'jpeg', quality: 0.95 },
+            html2canvas: { scale: 2 },
+            jsPDF: { unit: 'mm', format: 'a4', orientation: 'portrait' }
+          })
+          .from(element);
+
+        await worker.save();
+        alert('✅ PDF téléchargé !');
+      } catch (error) {
+        console.error('PDF error:', error);
+        alert('❌ Erreur génération PDF');
+      }
+    }
   </script>
 </body>
 </html>
